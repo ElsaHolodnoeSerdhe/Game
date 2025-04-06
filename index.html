@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Шары 10×10 (Полная версия)</title>
+    <title>Шары 10×10 (Локальный мультиплеер)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -102,6 +102,15 @@
         .close-btn {
             background: #ff5252;
         }
+        #connection-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-left: 5px;
+        }
+        .online { background: #4CAF50; }
+        .offline { background: #ff5252; }
     </style>
 </head>
 <body>
@@ -120,6 +129,7 @@
         <div id="game-info">
             Вы: <span id="current-username"></span> | 
             Ход: <span id="current-player">Красные</span>
+            <span id="connection-status" class="online" title="Соединение активно"></span>
         </div>
         <div class="board" id="board"></div>
         <button id="create-server-btn" class="btn">Создать сервер</button>
@@ -144,7 +154,8 @@
             currentPlayer: 'red',
             gameOver: false,
             username: '',
-            currentServerId: null
+            currentServerId: null,
+            lastUpdate: 0
         };
 
         // Инициализация
@@ -152,7 +163,40 @@
             loadUsername();
             setupEventListeners();
             initBoard();
+            startSync();
         });
+
+        // Синхронизация между вкладками
+        function startSync() {
+            // Проверяем изменения каждые 500мс
+            setInterval(() => {
+                if (gameState.currentServerId) {
+                    const server = getServer(gameState.currentServerId);
+                    if (server.lastUpdate > gameState.lastUpdate) {
+                        gameState.board = server.board;
+                        gameState.currentPlayer = server.currentPlayer;
+                        gameState.gameOver = server.gameOver;
+                        gameState.lastUpdate = server.lastUpdate;
+                        updateUI();
+                    }
+                }
+            }, 500);
+
+            // Слушаем события storage (для срабатывания между вкладками)
+            window.addEventListener('storage', (event) => {
+                if (event.key === 'balls-game-servers' && gameState.currentServerId) {
+                    const servers = getAllServers();
+                    const server = servers[gameState.currentServerId];
+                    if (server && server.lastUpdate > gameState.lastUpdate) {
+                        gameState.board = server.board;
+                        gameState.currentPlayer = server.currentPlayer;
+                        gameState.gameOver = server.gameOver;
+                        gameState.lastUpdate = server.lastUpdate;
+                        updateUI();
+                    }
+                }
+            });
+        }
 
         function loadUsername() {
             const savedUsername = localStorage.getItem('balls-game-username');
@@ -172,7 +216,6 @@
         }
 
         function setupEventListeners() {
-            // Кнопка входа
             document.getElementById('login-btn').addEventListener('click', () => {
                 const username = document.getElementById('username-input').value.trim();
                 if (username) {
@@ -184,7 +227,6 @@
                 }
             });
 
-            // Кнопки игры
             document.getElementById('create-server-btn').addEventListener('click', createServer);
             document.getElementById('show-servers-btn').addEventListener('click', showServers);
             document.getElementById('reset-btn').addEventListener('click', resetGame);
@@ -193,7 +235,6 @@
             });
         }
 
-        // Игровая логика
         function initBoard() {
             const boardElement = document.getElementById('board');
             boardElement.innerHTML = '';
@@ -220,7 +261,6 @@
         function makeMove(row, col) {
             if (gameState.gameOver || gameState.board[row][col]) return;
             
-            // Если играем на сервере, проверяем право хода
             if (gameState.currentServerId) {
                 const server = getServer(gameState.currentServerId);
                 if (
@@ -233,6 +273,7 @@
             }
             
             gameState.board[row][col] = gameState.currentPlayer;
+            gameState.lastUpdate = Date.now();
             
             if (checkWin(row, col)) {
                 gameState.gameOver = true;
@@ -243,6 +284,7 @@
                     const server = getServer(gameState.currentServerId);
                     server.gameOver = true;
                     server.winner = gameState.currentPlayer;
+                    server.lastUpdate = gameState.lastUpdate;
                     saveServer(server);
                 }
             } else {
@@ -252,6 +294,7 @@
                     const server = getServer(gameState.currentServerId);
                     server.currentPlayer = gameState.currentPlayer;
                     server.board = gameState.board;
+                    server.lastUpdate = gameState.lastUpdate;
                     saveServer(server);
                 }
             }
@@ -309,6 +352,7 @@
             gameState.board = Array(10).fill().map(() => Array(10).fill(null));
             gameState.currentPlayer = 'red';
             gameState.gameOver = false;
+            gameState.lastUpdate = Date.now();
             document.getElementById('winner').textContent = '';
             
             if (gameState.currentServerId) {
@@ -317,13 +361,14 @@
                 server.currentPlayer = 'red';
                 server.gameOver = false;
                 server.winner = null;
+                server.lastUpdate = gameState.lastUpdate;
                 saveServer(server);
             }
             
             updateUI();
         }
 
-        // Логика серверов (локальная)
+        // Логика серверов
         function createServer() {
             const serverName = prompt('Введите название сервера:', `Сервер ${gameState.username}`);
             if (!serverName) return;
@@ -337,14 +382,15 @@
                 board: Array(10).fill().map(() => Array(10).fill(null)),
                 currentPlayer: 'red',
                 gameOver: false,
-                createdAt: new Date().toLocaleString()
+                createdAt: new Date().toLocaleString(),
+                lastUpdate: Date.now()
             };
             
             saveServer(server);
             gameState.currentServerId = serverId;
             gameState.board = server.board;
             resetGame();
-            alert(`Сервер "${serverName}" создан!`);
+            alert(`Сервер "${serverName}" создан! Откройте игру в другом браузере и присоединитесь к этому серверу.`);
         }
 
         function showServers() {
@@ -367,7 +413,6 @@
                     `;
                     container.appendChild(serverElement);
                     
-                    // Обработчик для кнопки присоединения
                     serverElement.querySelector('.join-btn').addEventListener('click', (e) => {
                         joinServer(e.target.dataset.id);
                     });
@@ -392,12 +437,14 @@
             }
             
             server.bluePlayer = gameState.username;
+            server.lastUpdate = Date.now();
             saveServer(server);
             
             gameState.currentServerId = serverId;
             gameState.board = server.board;
             gameState.currentPlayer = server.currentPlayer;
             gameState.gameOver = server.gameOver;
+            gameState.lastUpdate = server.lastUpdate;
             
             document.getElementById('servers-modal').style.display = 'none';
             updateUI();
