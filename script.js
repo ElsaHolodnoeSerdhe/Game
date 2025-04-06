@@ -1,4 +1,4 @@
-const socket = io('https://ваш-проект.glitch.me');
+const socket = io('https://glitch.com/~rune-thread-crab');
 const boardElement = document.getElementById('board');
 const playerTurnElement = document.getElementById('player-turn');
 const winnerElement = document.getElementById('winner');
