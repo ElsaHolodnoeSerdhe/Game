@@ -1,28 +1,204 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Шары 10×10 (Мультиплеер)</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Шары 10×10 (Мультиплеер)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(10, 50px);
+            grid-template-rows: repeat(10, 50px);
+            gap: 2px;
+            margin: 20px auto;
+            background-color: #333;
+            padding: 5px;
+            border-radius: 5px;
+            max-width: 520px;
+        }
+        .cell {
+            width: 50px;
+            height: 50px;
+            background-color: white;
+            border-radius: 3px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .ball {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        .red { background-color: #ff5252; }
+        .blue { background-color: #4285f4; }
+        #connection-status {
+            margin-left: 15px;
+            color: #666;
+        }
+        #winner {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px;
+            height: 30px;
+        }
+    </style>
 </head>
 <body>
-  <h1>Шары 10×10</h1>
-  <div class="game-info" id="game-info">Ход: <span id="player-turn">Красные</span></div>
-  <div class="board" id="board"></div>
-  <button class="reset-btn" id="reset-btn">Новая игра</button>
-  <div class="winner" id="winner"></div>
+    <h1>Шары 10×10</h1>
+    <div class="game-info">
+        Ход: <span id="current-player">Красные</span>
+        <span id="connection-status">🔴 Оффлайн</span>
+    </div>
+    <div class="board" id="board"></div>
+    <button id="reset-btn">Новая игра</button>
+    <div id="winner"></div>
 
-  <div id="connection-status" style="
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  padding: 5px 10px;
-  background: #eee;
-  border-radius: 5px;
-">Проверка подключения...</div>
+    <!-- Клиентский код -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        // ================= КЛИЕНТ =================
+        // Укажите ваш URL Glitch-сервера
+        const SERVER_URL = 'https://your-glitch-project.glitch.me';
+        const socket = io(SERVER_URL);
+        
+        // Состояние игры
+        let board = Array(10).fill().map(() => Array(10).fill(null));
+        let currentPlayer = 'red';
+        let gameOver = false;
 
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="script.js"></script>
+        // Инициализация поля
+        function initBoard() {
+            const boardElement = document.getElementById('board');
+            boardElement.innerHTML = '';
+            
+            for (let row = 0; row < 10; row++) {
+                for (let col = 0; col < 10; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    
+                    if (board[row][col]) {
+                        const ball = document.createElement('div');
+                        ball.className = `ball ${board[row][col]}`;
+                        cell.appendChild(ball);
+                    }
+                    
+                    cell.addEventListener('click', () => makeMove(row, col));
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+        // Отправка хода
+        function makeMove(row, col) {
+            if (gameOver || board[row][col]) return;
+            socket.emit('move', { row, col, player: currentPlayer });
+        }
+
+        // Обработчики событий
+        socket.on('connect', () => {
+            document.getElementById('connection-status').textContent = '🟢 Онлайн';
+        });
+
+        socket.on('disconnect', () => {
+            document.getElementById('connection-status').textContent = '🔴 Оффлайн';
+        });
+
+        socket.on('game_state', (state) => {
+            board = state.board;
+            currentPlayer = state.currentPlayer;
+            gameOver = state.gameOver;
+            document.getElementById('current-player').textContent = 
+                currentPlayer === 'red' ? 'Красные' : 'Синие';
+            initBoard();
+        });
+
+        socket.on('game_over', (winner) => {
+            gameOver = true;
+            document.getElementById('winner').textContent = 
+                `Победили ${winner === 'red' ? 'Красные' : 'Синие'}!`;
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            socket.emit('reset');
+        });
+
+        // Запуск
+        initBoard();
+    </script>
+
+    <!-- Серверный код (для Glitch) -->
+    <script id="server-code" type="text/plain">
+        // ================= СЕРВЕР (Glitch) =================
+        const express = require('express');
+        const app = express();
+        const server = require('http').createServer(app);
+        const io = require('socket.io')(server, {
+            cors: { origin: "*" }
+        });
+
+        let gameState = {
+            board: Array(10).fill().map(() => Array(10).fill(null)),
+            currentPlayer: 'red',
+            gameOver: false
+        };
+
+        io.on('connection', (socket) => {
+            socket.emit('game_state', gameState);
+            
+            socket.on('move', (data) => {
+                if (gameState.gameOver || gameState.board[data.row][data.col]) return;
+                
+                gameState.board[data.row][data.col] = data.player;
+                
+                if (checkWin(data.row, data.col)) {
+                    gameState.gameOver = true;
+                    io.emit('game_over', data.player);
+                } else {
+                    gameState.currentPlayer = data.player === 'red' ? 'blue' : 'red';
+                    io.emit('game_state', gameState);
+                }
+            });
+            
+            socket.on('reset', () => {
+                gameState = {
+                    board: Array(10).fill().map(() => Array(10).fill(null)),
+                    currentPlayer: 'red',
+                    gameOver: false
+                };
+                io.emit('game_state', gameState);
+            });
+        });
+
+        function checkWin(row, col) {
+            const directions = [ [0,1], [1,0], [1,1], [1,-1] ];
+            for (const [dx, dy] of directions) {
+                let count = 1;
+                for (let i = 1; i < 4; i++) {
+                    const [r1, r2] = [row + i*dx, row - i*dx];
+                    const [c1, c2] = [col + i*dy, col - i*dy];
+                    if (r1 >= 0 && r1 < 10 && c1 >= 0 && c1 < 10 && 
+                        gameState.board[r1][c1] === gameState.board[row][col]) count++;
+                    if (r2 >= 0 && r2 < 10 && c2 >= 0 && c2 < 10 && 
+                        gameState.board[r2][c2] === gameState.board[row][col]) count++;
+                }
+                if (count >= 4) return true;
+            }
+            return false;
+        }
+
+        server.listen(3000, () => console.log('Сервер запущен'));
+    </script>
 </body>
 </html>
