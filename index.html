@@ -5,112 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Шары 10×10 (Локальный мультиплеер)</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            background-color: #f0f0f0;
-            margin: 0;
-            padding: 20px;
-        }
-        .board {
-            display: grid;
-            grid-template-columns: repeat(10, 50px);
-            grid-template-rows: repeat(10, 50px);
-            gap: 2px;
-            margin: 20px auto;
-            background-color: #333;
-            padding: 5px;
-            border-radius: 5px;
-            max-width: 520px;
-        }
-        .cell {
-            width: 50px;
-            height: 50px;
-            background-color: white;
-            border-radius: 3px;
-            cursor: pointer;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            transition: transform 0.2s;
-        }
-        .cell:hover {
-            transform: scale(0.95);
-        }
-        .ball {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        }
+        body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; margin: 0; padding: 20px; }
+        .board { display: grid; grid-template-columns: repeat(10, 50px); grid-template-rows: repeat(10, 50px); gap: 2px; margin: 20px auto; background-color: #333; padding: 5px; border-radius: 5px; max-width: 520px; }
+        .cell { width: 50px; height: 50px; background-color: white; border-radius: 3px; cursor: pointer; display: flex; justify-content: center; align-items: center; }
+        .ball { width: 40px; height: 40px; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
         .red { background-color: #ff5252; }
         .blue { background-color: #4285f4; }
-        #game-info {
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
+        #game-info { margin-bottom: 15px; font-size: 18px; }
         #current-player { font-weight: bold; }
-        #winner {
-            font-size: 24px;
-            font-weight: bold;
-            margin: 10px;
-            height: 30px;
-            color: #ff5722;
-        }
-        .btn {
-            padding: 10px 20px;
-            font-size: 16px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            margin: 5px;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.7);
-            z-index: 100;
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-content {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            width: 300px;
-            max-width: 90%;
-        }
-        input {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            box-sizing: border-box;
-        }
-        .server-item {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .close-btn {
-            background: #ff5252;
-        }
-        #connection-status {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-left: 5px;
-        }
-        .online { background: #4CAF50; }
-        .offline { background: #ff5252; }
+        #winner { font-size: 24px; font-weight: bold; margin: 10px; color: #ff5722; }
+        .btn { padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 20px; border-radius: 10px; width: 300px; }
+        input { width: 100%; padding: 10px; margin: 10px 0; }
+        .server-item { padding: 10px; border-bottom: 1px solid #eee; }
     </style>
 </head>
 <body>
@@ -129,7 +37,6 @@
         <div id="game-info">
             Вы: <span id="current-username"></span> | 
             Ход: <span id="current-player">Красные</span>
-            <span id="connection-status" class="online" title="Соединение активно"></span>
         </div>
         <div class="board" id="board"></div>
         <button id="create-server-btn" class="btn">Создать сервер</button>
@@ -143,19 +50,22 @@
         <div class="modal-content">
             <h2>Доступные серверы</h2>
             <div id="servers-container"></div>
-            <button id="close-servers-btn" class="btn close-btn">Закрыть</button>
+            <button id="close-servers-btn" class="btn">Закрыть</button>
         </div>
     </div>
 
     <script>
+        // Ключи для localStorage
+        const STORAGE_KEY = "balls-game-servers";
+        const USERNAME_KEY = "balls-game-username";
+
         // Состояние игры
         let gameState = {
             board: Array(10).fill().map(() => Array(10).fill(null)),
             currentPlayer: 'red',
             gameOver: false,
             username: '',
-            currentServerId: null,
-            lastUpdate: 0
+            currentServerId: null
         };
 
         // Инициализация
@@ -163,49 +73,30 @@
             loadUsername();
             setupEventListeners();
             initBoard();
-            startSync();
+            startStorageListener();
         });
 
-        // Синхронизация между вкладками
-        function startSync() {
-            // Проверяем изменения каждые 500мс
-            setInterval(() => {
-                if (gameState.currentServerId) {
-                    const server = getServer(gameState.currentServerId);
-                    if (server.lastUpdate > gameState.lastUpdate) {
-                        gameState.board = server.board;
-                        gameState.currentPlayer = server.currentPlayer;
-                        gameState.gameOver = server.gameOver;
-                        gameState.lastUpdate = server.lastUpdate;
-                        updateUI();
-                    }
-                }
-            }, 500);
-
-            // Слушаем события storage (для срабатывания между вкладками)
+        // Слушаем изменения в localStorage
+        function startStorageListener() {
             window.addEventListener('storage', (event) => {
-                if (event.key === 'balls-game-servers' && gameState.currentServerId) {
-                    const servers = getAllServers();
-                    const server = servers[gameState.currentServerId];
-                    if (server && server.lastUpdate > gameState.lastUpdate) {
-                        gameState.board = server.board;
-                        gameState.currentPlayer = server.currentPlayer;
-                        gameState.gameOver = server.gameOver;
-                        gameState.lastUpdate = server.lastUpdate;
-                        updateUI();
-                    }
+                if (event.key === STORAGE_KEY) {
+                    updateServersList();
                 }
             });
         }
 
         function loadUsername() {
-            const savedUsername = localStorage.getItem('balls-game-username');
+            const savedUsername = localStorage.getItem(USERNAME_KEY);
             if (savedUsername) {
                 gameState.username = savedUsername;
                 startGame();
             } else {
-                document.getElementById('login-modal').style.display = 'flex';
+                showLoginModal();
             }
+        }
+
+        function showLoginModal() {
+            document.getElementById('login-modal').style.display = 'flex';
         }
 
         function startGame() {
@@ -220,7 +111,7 @@
                 const username = document.getElementById('username-input').value.trim();
                 if (username) {
                     gameState.username = username;
-                    localStorage.setItem('balls-game-username', username);
+                    localStorage.setItem(USERNAME_KEY, username);
                     startGame();
                 } else {
                     alert('Введите ник!');
@@ -273,7 +164,6 @@
             }
             
             gameState.board[row][col] = gameState.currentPlayer;
-            gameState.lastUpdate = Date.now();
             
             if (checkWin(row, col)) {
                 gameState.gameOver = true;
@@ -284,7 +174,6 @@
                     const server = getServer(gameState.currentServerId);
                     server.gameOver = true;
                     server.winner = gameState.currentPlayer;
-                    server.lastUpdate = gameState.lastUpdate;
                     saveServer(server);
                 }
             } else {
@@ -294,7 +183,6 @@
                     const server = getServer(gameState.currentServerId);
                     server.currentPlayer = gameState.currentPlayer;
                     server.board = gameState.board;
-                    server.lastUpdate = gameState.lastUpdate;
                     saveServer(server);
                 }
             }
@@ -303,42 +191,17 @@
         }
 
         function checkWin(row, col) {
-            const directions = [
-                [0, 1], [1, 0], [1, 1], [1, -1]
-            ];
-            
+            const directions = [[0,1],[1,0],[1,1],[1,-1]];
             for (const [dx, dy] of directions) {
                 let count = 1;
-                
                 for (let i = 1; i < 4; i++) {
-                    const newRow = row + i * dx;
-                    const newCol = col + i * dy;
-                    
-                    if (newRow >= 0 && newRow < 10 && 
-                        newCol >= 0 && newCol < 10 && 
-                        gameState.board[newRow][newCol] === gameState.currentPlayer) {
-                        count++;
-                    } else {
-                        break;
-                    }
+                    const [r1, c1] = [row + i*dx, col + i*dy];
+                    const [r2, c2] = [row - i*dx, col - i*dy];
+                    if (r1 >= 0 && r1 < 10 && c1 >= 0 && c1 < 10 && gameState.board[r1][c1] === gameState.currentPlayer) count++;
+                    if (r2 >= 0 && r2 < 10 && c2 >= 0 && c2 < 10 && gameState.board[r2][c2] === gameState.currentPlayer) count++;
                 }
-                
-                for (let i = 1; i < 4; i++) {
-                    const newRow = row - i * dx;
-                    const newCol = col - i * dy;
-                    
-                    if (newRow >= 0 && newRow < 10 && 
-                        newCol >= 0 && newCol < 10 && 
-                        gameState.board[newRow][newCol] === gameState.currentPlayer) {
-                        count++;
-                    } else {
-                        break;
-                    }
-                }
-                
                 if (count >= 4) return true;
             }
-            
             return false;
         }
 
@@ -352,7 +215,6 @@
             gameState.board = Array(10).fill().map(() => Array(10).fill(null));
             gameState.currentPlayer = 'red';
             gameState.gameOver = false;
-            gameState.lastUpdate = Date.now();
             document.getElementById('winner').textContent = '';
             
             if (gameState.currentServerId) {
@@ -361,7 +223,6 @@
                 server.currentPlayer = 'red';
                 server.gameOver = false;
                 server.winner = null;
-                server.lastUpdate = gameState.lastUpdate;
                 saveServer(server);
             }
             
@@ -370,7 +231,7 @@
 
         // Логика серверов
         function createServer() {
-            const serverName = prompt('Введите название сервера:', `Сервер ${gameState.username}`);
+            const serverName = prompt('Название сервера:', `Сервер ${gameState.username}`);
             if (!serverName) return;
             
             const serverId = 'server_' + Date.now();
@@ -382,80 +243,87 @@
                 board: Array(10).fill().map(() => Array(10).fill(null)),
                 currentPlayer: 'red',
                 gameOver: false,
-                createdAt: new Date().toLocaleString(),
-                lastUpdate: Date.now()
+                createdAt: new Date().toLocaleString()
             };
             
             saveServer(server);
             gameState.currentServerId = serverId;
             gameState.board = server.board;
             resetGame();
-            alert(`Сервер "${serverName}" создан! Откройте игру в другом браузере и присоединитесь к этому серверу.`);
+            alert(`Сервер "${serverName}" создан! Откройте игру в другом браузере и присоединитесь.`);
         }
 
         function showServers() {
+            updateServersList();
+            document.getElementById('servers-modal').style.display = 'flex';
+        }
+
+        function updateServersList() {
             const servers = getAllServers();
             const container = document.getElementById('servers-container');
             container.innerHTML = '';
             
             if (Object.keys(servers).length === 0) {
-                container.innerHTML = '<p>Нет доступных серверов</p>';
-            } else {
-                for (const [id, server] of Object.entries(servers)) {
-                    const serverElement = document.createElement('div');
-                    serverElement.className = 'server-item';
-                    serverElement.innerHTML = `
-                        <div>
-                            <strong>${server.name}</strong><br>
-                            <small>Красный: ${server.redPlayer} | Синий: ${server.bluePlayer || 'нет'}</small>
-                        </div>
-                        <button class="btn join-btn" data-id="${id}">Присоединиться</button>
-                    `;
-                    container.appendChild(serverElement);
-                    
-                    serverElement.querySelector('.join-btn').addEventListener('click', (e) => {
-                        joinServer(e.target.dataset.id);
-                    });
-                }
+                container.innerHTML = '<p>Нет серверов</p>';
+                return;
             }
             
-            document.getElementById('servers-modal').style.display = 'flex';
+            for (const server of Object.values(servers)) {
+                const serverElement = document.createElement('div');
+                serverElement.className = 'server-item';
+                serverElement.innerHTML = `
+                    <h3>${server.name}</h3>
+                    <p>Красный: ${server.redPlayer} | Синий: ${server.bluePlayer || 'нет'}</p>
+                    <button class="btn join-btn" data-id="${server.id}">Присоединиться</button>
+                `;
+                container.appendChild(serverElement);
+                
+                serverElement.querySelector('.join-btn').addEventListener('click', (e) => {
+                    joinServer(e.target.dataset.id);
+                });
+            }
         }
 
         function joinServer(serverId) {
-            const server = getServer(serverId);
-            if (!server) return;
+            const servers = getAllServers();
+            const server = servers[serverId];
             
-            if (server.redPlayer === gameState.username || server.bluePlayer === gameState.username) {
-                alert('Вы уже в этом сервере!');
+            if (!server) {
+                alert('Сервер не найден!');
                 return;
             }
             
-            if (server.bluePlayer) {
-                alert('Сервер уже заполнен!');
+            if (server.redPlayer === gameState.username) {
+                alert('Вы уже создатель этого сервера!');
                 return;
             }
             
-            server.bluePlayer = gameState.username;
-            server.lastUpdate = Date.now();
-            saveServer(server);
+            if (server.bluePlayer && server.bluePlayer !== gameState.username) {
+                alert('Сервер уже занят!');
+                return;
+            }
+            
+            // Если синий игрок ещё не присоединился
+            if (!server.bluePlayer) {
+                server.bluePlayer = gameState.username;
+                saveServer(server);
+            }
             
             gameState.currentServerId = serverId;
             gameState.board = server.board;
             gameState.currentPlayer = server.currentPlayer;
             gameState.gameOver = server.gameOver;
-            gameState.lastUpdate = server.lastUpdate;
             
             document.getElementById('servers-modal').style.display = 'none';
             updateUI();
-            alert(`Вы присоединились как синий игрок к серверу "${server.name}"`);
+            alert(`Вы присоединились к серверу "${server.name}" как ${server.bluePlayer === gameState.username ? 'синий' : 'красный'} игрок!`);
         }
 
         // Работа с localStorage
         function saveServer(server) {
             const servers = getAllServers();
             servers[server.id] = server;
-            localStorage.setItem('balls-game-servers', JSON.stringify(servers));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
         }
 
         function getServer(serverId) {
@@ -464,7 +332,7 @@
         }
 
         function getAllServers() {
-            return JSON.parse(localStorage.getItem('balls-game-servers') || '{}');
+            return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
         }
     </script>
 </body>
